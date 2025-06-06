@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Good Live Click</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .preset-button.active, .subdivision-button.active {
+            background-color: #3b82f6; /* blue-600 */
+            color: white;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+        .preset-button.delete-mode:hover {
+            background-color: #ef4444; /* red-500 */
+            color: white;
+            transform: scale(0.95);
+        }
+        #delete-preset-btn.active {
+            background-color: #dc2626; /* red-600 */
+            box-shadow: 0 0 15px rgba(220, 38, 38, 0.5);
+        }
+        .status-light {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            transition: background-color 0.1s ease-in-out;
+        }
+        .status-light.on.accent {
+            background-color: #3b82f6; /* blue-500 */
+        }
+        .status-light.on.beat {
+            background-color: #ef4444; /* red-500 */
+        }
+        .status-light.off {
+            background-color: #4b5563; /* gray-600 */
+        }
+        .key-hint {
+            display: inline-block;
+            background-color: #4b5563; /* gray-600 */
+            color: #d1d5db; /* gray-300 */
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4 selection:bg-blue-500 selection:text-white">
+
+    <div class="w-full max-w-2xl bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 text-center border border-gray-700">
+        
+        <div class="flex items-center justify-center mb-6">
+            <div id="status-light" class="status-light off mr-4"></div>
+            <h1 class="text-7xl md:text-8xl font-bold tracking-tighter" id="bpm-display">120</h1>
+            <span class="text-2xl text-gray-400 ml-4">BPM</span>
+        </div>
+
+        <div class="flex justify-center space-x-4 mb-8">
+            <button id="start-stop-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition-all duration-200 w-40">Start</button>
+            <button id="tap-tempo-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition-all duration-200 w-40">Tap</button>
+        </div>
+        
+        <div class="flex items-center justify-center space-x-4 mb-6">
+            <button id="bpm-down-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold p-3 rounded-lg text-2xl transition-all duration-200">-</button>
+            <input type="range" id="bpm-slider" min="40" max="240" value="120" class="w-1/2">
+            <button id="bpm-up-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold p-3 rounded-lg text-2xl transition-all duration-200">+</button>
+        </div>
+
+        <!-- Subdivisions -->
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold mb-4 text-gray-300">Subdivisions</h2>
+            <div id="subdivisions-container" class="flex justify-center space-x-2">
+                <!-- Subdivision buttons will be generated here -->
+            </div>
+        </div>
+
+        <!-- Presets -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-300">Presets</h2>
+            <div id="presets-container" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 min-h-[52px]"></div>
+            <div class="flex justify-center space-x-4">
+                <button id="save-preset-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200">Save BPM</button>
+                <button id="delete-preset-btn" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200">Delete</button>
+            </div>
+        </div>
+        
+        <div>
+            <h3 class="text-lg font-medium mb-3 text-gray-400">Keyboard Shortcuts</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-left max-w-lg mx-auto text-gray-300">
+                <p><span class="key-hint">Space</span> Start / Stop</p>
+                <p><span class="key-hint">T</span> Tap Tempo</p>
+                <p><span class="key-hint">↑ / ↓</span> Adjust BPM by 1</p>
+                <p><span class="key-hint">Shift+↑/↓</span> Adjust BPM by 5</p>
+                <p><span class="key-hint">1-8</span> Load Preset</p>
+                <p><span class="key-hint">D</span> Toggle Delete Mode</p>
+                <p><span class="key-hint">Q, E, R, F</span> Change Subdivision</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // DOM Elements
+        const bpmDisplay = document.getElementById('bpm-display');
+        const startStopBtn = document.getElementById('start-stop-btn');
+        const tapTempoBtn = document.getElementById('tap-tempo-btn');
+        const bpmSlider = document.getElementById('bpm-slider');
+        const bpmUpBtn = document.getElementById('bpm-up-btn');
+        const bpmDownBtn = document.getElementById('bpm-down-btn');
+        const presetsContainer = document.getElementById('presets-container');
+        const savePresetBtn = document.getElementById('save-preset-btn');
+        const deletePresetBtn = document.getElementById('delete-preset-btn');
+        const subdivisionsContainer = document.getElementById('subdivisions-container');
+        const statusLight = document.getElementById('status-light');
+
+        // Metronome State
+        let bpm = 120;
+        let isRunning = false;
+        let timerId = null;
+        let audioContext;
+        let presets = [100, 120, 140, 160];
+        let subdivision = 'quarter'; // quarter, eighth, triplet, sixteenth
+        let subdivisionTimerIds = [];
+        let isDeleteMode = false;
+
+        const subdivisions = [
+            { name: 'quarter', key: 'Q', label: '♩' },
+            { name: 'eighth', key: 'E', label: '♪' },
+            { name: 'triplet', key: 'R', label: '³' },
+            { name: 'sixteenth', key: 'F', label: '♬' },
+        ];
+        
+        // Tap Tempo State
+        let lastTapTime = 0;
+        let tapTimes = [];
+
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+        
+        function playClick(isAccent = false) {
+            if (!audioContext) return;
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(isAccent ? 880 : 660, audioContext.currentTime);
+            gain.gain.setValueAtTime(1, audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.05);
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            osc.start(audioContext.currentTime);
+            osc.stop(audioContext.currentTime + 0.05);
+            
+            statusLight.classList.add('on', isAccent ? 'accent' : 'beat');
+            setTimeout(() => {
+                statusLight.classList.remove('on', 'accent', 'beat');
+            }, 100);
+        }
+
+        function scheduleSubdivisions() {
+            subdivisionTimerIds.forEach(clearTimeout);
+            subdivisionTimerIds = [];
+            const interval = 60000 / bpm;
+
+            switch (subdivision) {
+                case 'eighth':
+                    subdivisionTimerIds.push(setTimeout(() => playClick(false), interval / 2));
+                    break;
+                case 'triplet':
+                    subdivisionTimerIds.push(setTimeout(() => playClick(false), interval / 3));
+                    subdivisionTimerIds.push(setTimeout(() => playClick(false), (interval * 2) / 3));
+                    break;
+                case 'sixteenth':
+                    subdivisionTimerIds.push(setTimeout(() => playClick(false), interval / 4));
+                    subdivisionTimerIds.push(setTimeout(() => playClick(false), interval / 2));
+                    subdivisionTimerIds.push(setTimeout(() => playClick(false), (interval * 3) / 4));
+                    break;
+            }
+        }
+
+        function metronomeLoop() {
+            playClick(true); // Accent on the downbeat
+            scheduleSubdivisions();
+        }
+
+        function start() {
+            if (isRunning) return;
+            initAudio();
+            isRunning = true;
+            startStopBtn.textContent = 'Stop';
+            startStopBtn.classList.replace('bg-blue-600', 'bg-red-600');
+            startStopBtn.classList.replace('hover:bg-blue-700', 'hover:bg-red-700');
+            
+            const interval = 60000 / bpm;
+            timerId = setInterval(metronomeLoop, interval);
+            metronomeLoop(); // Play first click immediately
+        }
+
+        function stop() {
+            if (!isRunning) return;
+            isRunning = false;
+            startStopBtn.textContent = 'Start';
+            startStopBtn.classList.replace('bg-red-600', 'bg-blue-600');
+            startStopBtn.classList.replace('hover:bg-red-700', 'hover:bg-blue-700');
+            clearInterval(timerId);
+            subdivisionTimerIds.forEach(clearTimeout);
+            subdivisionTimerIds = [];
+            timerId = null;
+            statusLight.classList.remove('on', 'accent', 'beat');
+        }
+
+        function toggleStartStop() {
+            if (isRunning) stop(); else start();
+        }
+        
+        function updateBPM(newBpm) {
+            bpm = Math.max(40, Math.min(240, newBpm));
+            bpmDisplay.textContent = bpm;
+            bpmSlider.value = bpm;
+            if (isRunning) {
+                stop();
+                start();
+            }
+            updateActivePreset();
+        }
+
+        function tapTempo() {
+            initAudio();
+            const now = performance.now();
+            if (lastTapTime && (now - lastTapTime > 2000)) tapTimes = [];
+            lastTapTime = now;
+            tapTimes.push(now);
+
+            if (tapTimes.length > 1) {
+                const intervals = [];
+                for (let i = 1; i < tapTimes.length; i++) {
+                    intervals.push(tapTimes[i] - tapTimes[i - 1]);
+                }
+                const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+                updateBPM(Math.round(60000 / avgInterval));
+            }
+        }
+
+        function renderPresets() {
+            presetsContainer.innerHTML = '';
+            presets.slice(0, 8).forEach((p, index) => {
+                const button = document.createElement('button');
+                button.className = 'preset-button bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200';
+                button.textContent = p;
+                button.dataset.bpm = p;
+                button.dataset.index = index;
+
+                if (isDeleteMode) {
+                    button.classList.add('delete-mode');
+                    button.onclick = () => deletePreset(index);
+                } else {
+                    button.onclick = () => updateBPM(p);
+                }
+                presetsContainer.appendChild(button);
+            });
+            updateActivePreset();
+        }
+
+        function savePreset() {
+            if (presets.length >= 8) {
+                console.warn("Maximum of 8 presets reached.");
+                return;
+            }
+            if (!presets.includes(bpm)) {
+                presets.push(bpm);
+                presets.sort((a, b) => a - b);
+                renderPresets();
+            }
+        }
+
+        function toggleDeleteMode() {
+            isDeleteMode = !isDeleteMode;
+            deletePresetBtn.classList.toggle('active', isDeleteMode);
+            renderPresets();
+        }
+        
+        function deletePreset(indexToDelete) {
+            presets.splice(indexToDelete, 1);
+            renderPresets();
+        }
+
+        function updateActivePreset() {
+             document.querySelectorAll('.preset-button').forEach(btn => {
+                 btn.classList.toggle('active', !isDeleteMode && parseInt(btn.dataset.bpm) === bpm);
+             });
+        }
+        
+        function renderSubdivisions() {
+            subdivisionsContainer.innerHTML = '';
+            subdivisions.forEach(sub => {
+                const button = document.createElement('button');
+                button.className = 'subdivision-button bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg transition-all duration-200';
+                button.innerHTML = `<span class="text-xl">${sub.label}</span>`;
+                button.dataset.name = sub.name;
+                button.onclick = () => setSubdivision(sub.name);
+                subdivisionsContainer.appendChild(button);
+            });
+            updateActiveSubdivision();
+        }
+
+        function setSubdivision(name) {
+            subdivision = name;
+            updateActiveSubdivision();
+            if (isRunning) {
+                stop();
+                start();
+            }
+        }
+
+        function updateActiveSubdivision() {
+            document.querySelectorAll('.subdivision-button').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.name === subdivision);
+            });
+        }
+        
+        startStopBtn.addEventListener('click', toggleStartStop);
+        tapTempoBtn.addEventListener('click', tapTempo);
+        bpmSlider.addEventListener('input', (e) => updateBPM(parseInt(e.target.value)));
+        bpmUpBtn.addEventListener('click', () => updateBPM(bpm + 1));
+        bpmDownBtn.addEventListener('click', () => updateBPM(bpm - 1));
+        savePresetBtn.addEventListener('click', savePreset);
+        deletePresetBtn.addEventListener('click', toggleDeleteMode);
+
+        window.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            
+            const key = e.key.toUpperCase();
+
+            // Check for subdivision shortcuts first
+            const subShortcut = subdivisions.find(s => s.key === key);
+            if (subShortcut) {
+                e.preventDefault();
+                setSubdivision(subShortcut.name);
+                return;
+            }
+
+            switch(e.key) {
+                case ' ': e.preventDefault(); toggleStartStop(); break;
+                case 't': case 'T': e.preventDefault(); tapTempo(); break;
+                case 'd': case 'D': e.preventDefault(); toggleDeleteMode(); break;
+                case 'ArrowUp': e.preventDefault(); updateBPM(bpm + (e.shiftKey ? 5 : 1)); break;
+                case 'ArrowDown': e.preventDefault(); updateBPM(bpm - (e.shiftKey ? 5 : 1)); break;
+            }
+
+            const keyNum = parseInt(e.key);
+            if (keyNum >= 1 && keyNum <= 8) {
+                e.preventDefault();
+                const presetBpm = presets[keyNum - 1];
+                if (presetBpm !== undefined) {
+                    if (isDeleteMode) {
+                        deletePreset(keyNum - 1);
+                    } else {
+                        updateBPM(presetBpm);
+                    }
+                }
+            }
+        });
+
+        window.onload = () => {
+            updateBPM(120);
+            renderPresets();
+            renderSubdivisions();
+        };
+    </script>
+</body>
+</html>
+
