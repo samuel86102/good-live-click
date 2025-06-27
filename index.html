@@ -26,8 +26,8 @@
             box-shadow: 0 0 15px rgba(220, 38, 38, 0.5);
         }
         .status-light {
-            width: 20px;
-            height: 20px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             transition: background-color 0.1s ease-in-out;
         }
@@ -49,6 +49,53 @@
             font-size: 0.8rem;
             font-weight: 600;
             margin-right: 8px;
+        }
+        /* Toggle Switch Styling */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #4b5563; /* gray-600 */
+            -webkit-transition: .4s;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            -webkit-transition: .4s;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: #3b82f6; /* blue-600 */
+        }
+        input:focus + .toggle-slider {
+            box-shadow: 0 0 1px #3b82f6;
+        }
+        input:checked + .toggle-slider:before {
+            -webkit-transform: translateX(26px);
+            -ms-transform: translateX(26px);
+            transform: translateX(26px);
         }
     </style>
 </head>
@@ -73,15 +120,27 @@
             <button id="bpm-up-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold p-3 rounded-lg text-2xl transition-all duration-200">+</button>
         </div>
 
-        <!-- Subdivisions -->
-        <div class="mb-8">
-            <h2 class="text-xl font-semibold mb-4 text-gray-300">Subdivisions</h2>
-            <div id="subdivisions-container" class="flex justify-center space-x-2">
-                <!-- Subdivision buttons will be generated here -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <div>
+                <h2 class="text-xl font-semibold mb-4 text-gray-300">Accent First Beat</h2>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="accent-toggle" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div>
+                <h2 class="text-xl font-semibold mb-4 text-gray-300">Sound</h2>
+                <select id="sound-select" class="bg-gray-700 border border-gray-600 text-white p-3 rounded-lg w-full max-w-xs mx-auto focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </select>
             </div>
         </div>
 
-        <!-- Presets -->
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold mb-4 text-gray-300">Subdivisions</h2>
+            <div id="subdivisions-container" class="flex justify-center space-x-2">
+                </div>
+        </div>
+
         <div class="mb-6">
             <h2 class="text-xl font-semibold mb-4 text-gray-300">Presets</h2>
             <div id="presets-container" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 min-h-[52px]"></div>
@@ -105,7 +164,7 @@
         </div>
     </div>
     
-    <script>
+<script>
         // DOM Elements
         const bpmDisplay = document.getElementById('bpm-display');
         const startStopBtn = document.getElementById('start-stop-btn');
@@ -118,6 +177,8 @@
         const deletePresetBtn = document.getElementById('delete-preset-btn');
         const subdivisionsContainer = document.getElementById('subdivisions-container');
         const statusLight = document.getElementById('status-light');
+        const accentToggle = document.getElementById('accent-toggle');
+        const soundSelect = document.getElementById('sound-select');
 
         // Metronome State
         let bpm = 120;
@@ -125,9 +186,12 @@
         let timerId = null;
         let audioContext;
         let presets = [100, 120, 140, 160];
-        let subdivision = 'quarter'; // quarter, eighth, triplet, sixteenth
+        let subdivision = 'quarter';
         let subdivisionTimerIds = [];
         let isDeleteMode = false;
+        let currentBeat = 0;
+        let enableAccent = true;
+        let currentSound = 'Classic';
 
         const subdivisions = [
             { name: 'quarter', key: 'Q', label: '♩' },
@@ -136,22 +200,48 @@
             { name: 'sixteenth', key: 'F', label: '♬' },
         ];
         
-        // Tap Tempo State
+        const soundProfiles = [
+            { name: 'Classic', type: 'sine', freq: 660, accentFreq: 880 },
+            { name: 'High Beep', type: 'sine', freq: 1200, accentFreq: 1600 },
+            { name: 'Wood Block', type: 'square', freq: 440, accentFreq: 660 },
+            { name: 'Electronic', type: 'sawtooth', freq: 550, accentFreq: 770 },
+        ];
+        
         let lastTapTime = 0;
         let tapTimes = [];
 
+        // ✅ MODIFIED: This function now correctly creates and resumes the AudioContext.
         function initAudio() {
             if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                } catch (e) {
+                    console.error("Web Audio API is not supported in this browser");
+                    alert("This browser does not support the required audio features for the metronome.");
+                    return;
+                }
+            }
+            // This is the key part: always try to resume if suspended.
+            // This must be called from within a user-initiated event (like a click).
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
             }
         }
         
         function playClick(isAccent = false) {
-            if (!audioContext) return;
+            // If for any reason the context is not running, do nothing.
+            if (!audioContext || audioContext.state !== 'running') {
+                statusLight.classList.remove('on', 'accent', 'beat'); // Ensure light is off
+                return;
+            }
+            
+            const profile = soundProfiles.find(p => p.name === currentSound) || soundProfiles[0];
             const osc = audioContext.createOscillator();
             const gain = audioContext.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(isAccent ? 880 : 660, audioContext.currentTime);
+            
+            osc.type = profile.type;
+            osc.frequency.setValueAtTime(isAccent ? profile.accentFreq : profile.freq, audioContext.currentTime);
+            
             gain.gain.setValueAtTime(1, audioContext.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.05);
             osc.connect(gain);
@@ -187,21 +277,28 @@
         }
 
         function metronomeLoop() {
-            playClick(true); // Accent on the downbeat
+            const isAccentBeat = enableAccent && (currentBeat % 4 === 0);
+            playClick(isAccentBeat); 
             scheduleSubdivisions();
+            currentBeat = (currentBeat + 1) % 4;
         }
 
         function start() {
             if (isRunning) return;
+            
+            // ✅ IMPORTANT: Initialize audio right before starting.
+            // This ensures it runs within the user's click action.
             initAudio();
+
             isRunning = true;
             startStopBtn.textContent = 'Stop';
             startStopBtn.classList.replace('bg-blue-600', 'bg-red-600');
             startStopBtn.classList.replace('hover:bg-blue-700', 'hover:bg-red-700');
             
             const interval = 60000 / bpm;
-            timerId = setInterval(metronomeLoop, interval);
+            currentBeat = 0;
             metronomeLoop(); // Play first click immediately
+            timerId = setInterval(metronomeLoop, interval);
         }
 
         function stop() {
@@ -233,7 +330,7 @@
         }
 
         function tapTempo() {
-            initAudio();
+            initAudio(); // Also ensure audio is ready on tap
             const now = performance.now();
             if (lastTapTime && (now - lastTapTime > 2000)) tapTimes = [];
             lastTapTime = now;
@@ -294,7 +391,7 @@
 
         function updateActivePreset() {
              document.querySelectorAll('.preset-button').forEach(btn => {
-                 btn.classList.toggle('active', !isDeleteMode && parseInt(btn.dataset.bpm) === bpm);
+                   btn.classList.toggle('active', !isDeleteMode && parseInt(btn.dataset.bpm) === bpm);
              });
         }
         
@@ -325,7 +422,17 @@
                 btn.classList.toggle('active', btn.dataset.name === subdivision);
             });
         }
+
+        function renderSoundOptions() {
+            soundProfiles.forEach(profile => {
+                const option = document.createElement('option');
+                option.value = profile.name;
+                option.textContent = profile.name;
+                soundSelect.appendChild(option);
+            });
+        }
         
+        // Event Listeners
         startStopBtn.addEventListener('click', toggleStartStop);
         tapTempoBtn.addEventListener('click', tapTempo);
         bpmSlider.addEventListener('input', (e) => updateBPM(parseInt(e.target.value)));
@@ -334,12 +441,26 @@
         savePresetBtn.addEventListener('click', savePreset);
         deletePresetBtn.addEventListener('click', toggleDeleteMode);
 
+        accentToggle.addEventListener('change', (e) => {
+            enableAccent = e.target.checked;
+            if (isRunning) {
+                stop();
+                start();
+            }
+        });
+
+        soundSelect.addEventListener('change', (e) => {
+            currentSound = e.target.value;
+            if (!isRunning) {
+                initAudio(); // Make sure context is ready for preview
+                playClick(true);
+            }
+        });
+
         window.addEventListener('keydown', (e) => {
-            if (e.target.tagName === 'INPUT') return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
             
             const key = e.key.toUpperCase();
-
-            // Check for subdivision shortcuts first
             const subShortcut = subdivisions.find(s => s.key === key);
             if (subShortcut) {
                 e.preventDefault();
@@ -369,12 +490,13 @@
             }
         });
 
+        // ✅ MODIFIED: Removed audio initialization from here.
         window.onload = () => {
             updateBPM(120);
             renderPresets();
             renderSubdivisions();
+            renderSoundOptions();
+            accentToggle.checked = enableAccent;
         };
-    </script>
-</body>
+    </script></body>
 </html>
-
