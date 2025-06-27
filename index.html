@@ -149,12 +149,14 @@
                 <button id="delete-preset-btn" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200">Delete</button>
             </div>
         </div>
-        
-        <div>
+
+
+		<div>
             <h3 class="text-lg font-medium mb-3 text-gray-400">Keyboard Shortcuts</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-left max-w-lg mx-auto text-gray-300">
                 <p><span class="key-hint">Space</span> Start / Stop</p>
                 <p><span class="key-hint">T</span> Tap Tempo</p>
+                <p><span class="key-hint">A</span> Toggle Accent</p>
                 <p><span class="key-hint">↑ / ↓</span> Adjust BPM by 1</p>
                 <p><span class="key-hint">Shift+↑/↓</span> Adjust BPM by 5</p>
                 <p><span class="key-hint">1-8</span> Load Preset</p>
@@ -162,9 +164,10 @@
                 <p><span class="key-hint">Q, E, R, F</span> Change Subdivision</p>
             </div>
         </div>
+        
     </div>
-    
-<script>
+
+   <script>
         // DOM Elements
         const bpmDisplay = document.getElementById('bpm-display');
         const startStopBtn = document.getElementById('start-stop-btn');
@@ -210,7 +213,6 @@
         let lastTapTime = 0;
         let tapTimes = [];
 
-        // ✅ MODIFIED: This function now correctly creates and resumes the AudioContext.
         function initAudio() {
             if (!audioContext) {
                 try {
@@ -221,17 +223,14 @@
                     return;
                 }
             }
-            // This is the key part: always try to resume if suspended.
-            // This must be called from within a user-initiated event (like a click).
             if (audioContext.state === 'suspended') {
                 audioContext.resume();
             }
         }
         
         function playClick(isAccent = false) {
-            // If for any reason the context is not running, do nothing.
             if (!audioContext || audioContext.state !== 'running') {
-                statusLight.classList.remove('on', 'accent', 'beat'); // Ensure light is off
+                statusLight.classList.remove('on', 'accent', 'beat');
                 return;
             }
             
@@ -285,11 +284,7 @@
 
         function start() {
             if (isRunning) return;
-            
-            // ✅ IMPORTANT: Initialize audio right before starting.
-            // This ensures it runs within the user's click action.
             initAudio();
-
             isRunning = true;
             startStopBtn.textContent = 'Stop';
             startStopBtn.classList.replace('bg-blue-600', 'bg-red-600');
@@ -297,7 +292,7 @@
             
             const interval = 60000 / bpm;
             currentBeat = 0;
-            metronomeLoop(); // Play first click immediately
+            metronomeLoop();
             timerId = setInterval(metronomeLoop, interval);
         }
 
@@ -330,7 +325,7 @@
         }
 
         function tapTempo() {
-            initAudio(); // Also ensure audio is ready on tap
+            initAudio();
             const now = performance.now();
             if (lastTapTime && (now - lastTapTime > 2000)) tapTimes = [];
             lastTapTime = now;
@@ -452,7 +447,7 @@
         soundSelect.addEventListener('change', (e) => {
             currentSound = e.target.value;
             if (!isRunning) {
-                initAudio(); // Make sure context is ready for preview
+                initAudio();
                 playClick(true);
             }
         });
@@ -467,13 +462,15 @@
                 setSubdivision(subShortcut.name);
                 return;
             }
-
-            switch(e.key) {
+            
+            // ✅ UPDATED: Added shortcut for 'A' key
+            switch(e.key.toLowerCase()) { // Use toLowerCase() to handle both 'a' and 'A'
                 case ' ': e.preventDefault(); toggleStartStop(); break;
-                case 't': case 'T': e.preventDefault(); tapTempo(); break;
-                case 'd': case 'D': e.preventDefault(); toggleDeleteMode(); break;
-                case 'ArrowUp': e.preventDefault(); updateBPM(bpm + (e.shiftKey ? 5 : 1)); break;
-                case 'ArrowDown': e.preventDefault(); updateBPM(bpm - (e.shiftKey ? 5 : 1)); break;
+                case 't': e.preventDefault(); tapTempo(); break;
+                case 'd': e.preventDefault(); toggleDeleteMode(); break;
+                case 'a': e.preventDefault(); accentToggle.click(); break; // This toggles the checkbox
+                case 'arrowup': e.preventDefault(); updateBPM(bpm + (e.shiftKey ? 5 : 1)); break;
+                case 'arrowdown': e.preventDefault(); updateBPM(bpm - (e.shiftKey ? 5 : 1)); break;
             }
 
             const keyNum = parseInt(e.key);
@@ -490,7 +487,6 @@
             }
         });
 
-        // ✅ MODIFIED: Removed audio initialization from here.
         window.onload = () => {
             updateBPM(120);
             renderPresets();
@@ -498,5 +494,8 @@
             renderSoundOptions();
             accentToggle.checked = enableAccent;
         };
-    </script></body>
+    </script>
+
+
+</body>
 </html>
