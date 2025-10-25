@@ -120,7 +120,24 @@
             <button id="bpm-up-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold p-3 rounded-lg text-2xl transition-all duration-200">+</button>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+
+
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-300">Presets</h2>
+            <div id="presets-container" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 min-h-[52px]"></div>
+            <div class="flex justify-center space-x-4">
+                <button id="save-preset-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200">Save BPM</button>
+                <button id="delete-preset-btn" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200">Delete</button>
+            </div>
+        </div>
+
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold mb-4 text-gray-300">Subdivisions</h2>
+            <div id="subdivisions-container" class="flex justify-center space-x-2">
+                </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
             <div>
                 <h2 class="text-xl font-semibold mb-4 text-gray-300">Accent First Beat</h2>
                 <label class="toggle-switch">
@@ -131,24 +148,12 @@
             <div>
                 <h2 class="text-xl font-semibold mb-4 text-gray-300">Sound</h2>
                 <select id="sound-select" class="bg-gray-700 border border-gray-600 text-white p-3 rounded-lg w-full max-w-xs mx-auto focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    </select>
+                </select>
             </div>
         </div>
 
-        <div class="mb-8">
-            <h2 class="text-xl font-semibold mb-4 text-gray-300">Subdivisions</h2>
-            <div id="subdivisions-container" class="flex justify-center space-x-2">
-                </div>
-        </div>
 
-        <div class="mb-6">
-            <h2 class="text-xl font-semibold mb-4 text-gray-300">Presets</h2>
-            <div id="presets-container" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 min-h-[52px]"></div>
-            <div class="flex justify-center space-x-4">
-                <button id="save-preset-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200">Save BPM</button>
-                <button id="delete-preset-btn" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200">Delete</button>
-            </div>
-        </div>
+
 
 
 		<div>
@@ -194,7 +199,9 @@
         let isDeleteMode = false;
         let currentBeat = 0;
         let enableAccent = true;
-        let currentSound = 'Classic';
+        let currentSound = 'Acoustic Kit';
+        let soundBuffers = {};
+        let soundsLoadingPromise = null;
 
         const subdivisions = [
             { name: 'quarter', key: 'Q', label: '♩' },
@@ -204,6 +211,7 @@
         ];
         
         const soundProfiles = [
+            { name: 'Acoustic Kit', type: 'mp3', soundUrl: './sounds/kit_click.mp3', accentSoundUrl: './sounds/kit_accent.mp3' },
             { name: 'Classic', type: 'sine', freq: 660, accentFreq: 880 },
             { name: 'High Beep', type: 'sine', freq: 1200, accentFreq: 1600 },
             { name: 'Wood Block', type: 'square', freq: 440, accentFreq: 660 },
@@ -213,10 +221,55 @@
         let lastTapTime = 0;
         let tapTimes = [];
 
+        async function loadCustomSounds() {
+            if (!audioContext) return;
+            for (const profile of soundProfiles) {
+                if (profile.type === 'mp3') {
+                    try {
+                        const [soundResponse, accentResponse] = await Promise.all([
+                            fetch(profile.soundUrl),
+                            fetch(profile.accentSoundUrl)
+                        ]);
+                        if (!soundResponse.ok || !accentResponse.ok) {
+                            throw new Error(`Failed to fetch sounds for ${profile.name}`);
+                        }
+                        const [soundArrayBuffer, accentArrayBuffer] = await Promise.all([
+                            soundResponse.arrayBuffer(),
+                            accentResponse.arrayBuffer()
+                        ]);
+                        const [soundBuffer, accentBuffer] = await Promise.all([
+                            audioContext.decodeAudioData(soundArrayBuffer),
+                            audioContext.decodeAudioData(accentArrayBuffer)
+                        ]);
+                        soundBuffers[profile.name] = {
+                            sound: soundBuffer,
+                            accent: accentBuffer
+                        };
+                        console.log(`${profile.name} sounds loaded successfully.`);
+                    } catch (error) {
+                        console.error(`Error loading custom sounds for ${profile.name}:`, error);
+                        const option = soundSelect.querySelector(`option[value="${profile.name}"]`);
+                        if(option) {
+                            option.textContent = `${profile.name} (Error)`;
+                            option.disabled = true;
+                        }
+                        if (currentSound === profile.name) {
+                            const fallbackSound = soundProfiles.find(p => p.type !== 'mp3');
+                            if (fallbackSound) {
+                                currentSound = fallbackSound.name;
+                                soundSelect.value = currentSound;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         function initAudio() {
             if (!audioContext) {
                 try {
                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    soundsLoadingPromise = loadCustomSounds();
                 } catch (e) {
                     console.error("Web Audio API is not supported in this browser");
                     alert("This browser does not support the required audio features for the metronome.");
@@ -227,14 +280,8 @@
                 audioContext.resume();
             }
         }
-        
-        function playClick(isAccent = false) {
-            if (!audioContext || audioContext.state !== 'running') {
-                statusLight.classList.remove('on', 'accent', 'beat');
-                return;
-            }
-            
-            const profile = soundProfiles.find(p => p.name === currentSound) || soundProfiles[0];
+
+        function playOscillator(isAccent, profile) {
             const osc = audioContext.createOscillator();
             const gain = audioContext.createGain();
             
@@ -247,6 +294,30 @@
             gain.connect(audioContext.destination);
             osc.start(audioContext.currentTime);
             osc.stop(audioContext.currentTime + 0.05);
+        }
+        
+        function playClick(isAccent = false) {
+            if (!audioContext || audioContext.state !== 'running') {
+                statusLight.classList.remove('on', 'accent', 'beat');
+                return;
+            }
+            
+            const profile = soundProfiles.find(p => p.name === currentSound) || soundProfiles[0];
+
+            if (profile.type === 'mp3') {
+                const buffers = soundBuffers[profile.name];
+                if (buffers && buffers.sound && buffers.accent) {
+                    const source = audioContext.createBufferSource();
+                    source.buffer = isAccent ? buffers.accent : buffers.sound;
+                    source.connect(audioContext.destination);
+                    source.start();
+                } else {
+                    // Fallback to a sine wave if MP3s are not loaded/failed
+                    playOscillator(isAccent, { type: 'sine', freq: 660, accentFreq: 880 });
+                }
+            } else {
+                playOscillator(isAccent, profile);
+            }
             
             statusLight.classList.add('on', isAccent ? 'accent' : 'beat');
             setTimeout(() => {
@@ -492,6 +563,7 @@
             renderPresets();
             renderSubdivisions();
             renderSoundOptions();
+            soundSelect.value = currentSound;
             accentToggle.checked = enableAccent;
         };
     </script>
